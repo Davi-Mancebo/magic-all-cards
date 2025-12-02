@@ -1,0 +1,31 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.env/
+.venv/
+
+# Local data caches
+automagic.db
+AllPrintings.json
+AllPrintings.meta.json
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Logs / temp
+*.log
+*.tmp
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.7z
+*.tar
+*.tar.gz
