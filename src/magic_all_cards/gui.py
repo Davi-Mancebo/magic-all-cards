@@ -349,18 +349,11 @@ class MagicDownloaderApp:
 
         self.btn_clear_sets.pack(side=tk.RIGHT)
 
-
-
         self.set_list = tk.Listbox(self.sets_frame, selectmode=tk.MULTIPLE, exportselection=False)
-
         self.set_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-
-
         scrollbar = ttk.Scrollbar(self.sets_frame, orient=tk.VERTICAL, command=self.set_list.yview)
-
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
         self.set_list.config(yscrollcommand=scrollbar.set)
 
 
@@ -675,6 +668,8 @@ class MagicDownloaderApp:
 
 
 
+
+
     def _on_type_selected(self, _event: Optional[tk.Event] = None) -> None:
 
         label = self.type_var.get()
@@ -870,13 +865,13 @@ class MagicDownloaderApp:
 
         if filter_text:
 
-            self.filtered_metadata = [item for item in self.sets_metadata if filter_text in item.search]
+            working_list = [item for item in self.sets_metadata if filter_text in item.search]
 
         else:
 
-            self.filtered_metadata = list(self.sets_metadata)
+            working_list = list(self.sets_metadata)
 
-
+        self.filtered_metadata = working_list
 
         self.set_list.delete(0, tk.END)
 
@@ -885,6 +880,10 @@ class MagicDownloaderApp:
             display = f"[{item.code}] {item.name} ({item.release})"
 
             self.set_list.insert(tk.END, display)
+
+        if self.set_list is not None:
+
+            self.set_list.selection_clear(0, tk.END)
 
 
 

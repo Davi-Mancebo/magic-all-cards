@@ -92,6 +92,19 @@ def get_language_display_map(app_language: str) -> Dict[str, str]:
         mapping[f"{label} ({code.upper()})"] = code
     return mapping
 
+LANGUAGE_NAME_TO_CODE: Dict[str, str] = {
+    name.lower(): code for name, code in SCRYFALL_LANGUAGE_CHOICES
+}
+
+LANGUAGE_NAME_TO_CODE.update(
+    {
+        "portuguese (brazil)": "pt",
+        "chinese simplified": "zhs",
+        "chinese traditional": "zht",
+        "spanish (latin america)": "es",
+    }
+)
+
 CARD_TYPE_RULES: Dict[str, Callable[[Dict[str, Any]], bool]] = {
     "all": lambda card: True,
     "creature": lambda card: "Creature" in card.get("types", []),
