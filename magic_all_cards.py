@@ -28,6 +28,7 @@ CARD_WARNING_THRESHOLD = 40000  # Aproximadamente >10 GB de imagens
 CARD_WARNING_MB_PER_IMAGE = 0.24  # média estimada em MB por PNG
 IMAGE_DOWNLOAD_RETRIES = 3
 IMAGE_RETRY_DELAY = 1.0
+
 @dataclass(frozen=True)
 class SetMetadata:
     code: str
@@ -203,10 +204,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_download_cancelled": "Download cancelado após alerta de tamanho.",
         "log_download_success": "Baixado [{lang}]: {set_name} - {card_name}",
         "log_download_fallback": "Baixado (fallback EN): {set_name} - {card_name}",
-        "log_download_failure": "Falhou [{lang}]: {set_name} - {card_name}",
+        "log_download_retry": "Tentativa {attempt}/{total} falhou [{lang}]: {set_name} - {card_name}. Motivo: {error}",
+        "log_download_failure": "Falhou [{lang}] após {attempts} tentativas: {set_name} - {card_name}. Motivo: {error}",
         "progress_cards_label": "{percent}% ({downloaded}/{total} cartas)",
         "card_fallback_name": "Carta",
         "error_title": "Erro",
+        "error_unknown": "Motivo desconhecido",
         "warning_title": "Aviso",
         "info_title": "Informação",
         "meta_fail": "Não foi possível consultar o Meta do MTGJSON. Usando cache local.",
@@ -255,10 +258,12 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_download_cancelled": "Download canceled after size warning.",
         "log_download_success": "Downloaded [{lang}]: {set_name} - {card_name}",
         "log_download_fallback": "Downloaded (fallback EN): {set_name} - {card_name}",
-        "log_download_failure": "Failed [{lang}]: {set_name} - {card_name}",
+        "log_download_retry": "Attempt {attempt}/{total} failed [{lang}]: {set_name} - {card_name}. Reason: {error}",
+        "log_download_failure": "Failed [{lang}] after {attempts} attempts: {set_name} - {card_name}. Reason: {error}",
         "progress_cards_label": "{percent}% ({downloaded}/{total} cards)",
         "card_fallback_name": "Card",
         "error_title": "Error",
+        "error_unknown": "Unknown reason",
         "warning_title": "Warning",
         "info_title": "Information",
         "meta_fail": "Unable to reach MTGJSON Meta. Using local cache.",
@@ -464,15 +469,15 @@ def get_scryfall_id(card: Dict) -> str | None:
     return card.get("scryfallId") or identifiers.get("scryfallId")
 
 
-def download_binary(url: str, destination: Path) -> bool:
+def download_binary(url: str, destination: Path) -> tuple[bool, Optional[str]]:
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             destination.write_bytes(response.content)
-            return True
-    except requests.RequestException:
-        return False
-    return False
+            return True, None
+        return False, f"status {response.status_code}"
+    except requests.RequestException as exc:
+        return False, str(exc)
 
 
 class MagicDownloaderApp:
@@ -1116,23 +1121,48 @@ class MagicDownloaderApp:
                     continue
 
                 url_candidates = build_image_url_candidates(card, code, language_code)
-                success = False
-                fallback_used = False
-                for idx, url in enumerate(url_candidates):
-                    is_fallback_attempt = idx > 0 and language_code.lower() != "en"
-                    target_path = fallback_path if is_fallback_attempt else primary_path
-                    for attempt in range(IMAGE_DOWNLOAD_RETRIES):
-                        success = download_binary(url, target_path)
-                        if success:
-                            fallback_used = is_fallback_attempt
-                            break
-                        if attempt < IMAGE_DOWNLOAD_RETRIES - 1:
-                            time.sleep(IMAGE_RETRY_DELAY)
-                    if success:
-                        break
-
                 lang_label = language_code.upper()
                 card_display_name = card.get("name") or self._t("card_fallback_name")
+                success = False
+                fallback_used = False
+                attempts_made = 0
+                last_error: Optional[str] = None
+                last_lang_label = lang_label
+
+                for idx, url in enumerate(url_candidates):
+                    is_fallback_attempt = idx > 0 and language_code.lower() != "en"
+                    attempt_lang_label = "EN" if is_fallback_attempt else lang_label
+                    target_path = fallback_path if is_fallback_attempt else primary_path
+
+                    for attempt in range(1, IMAGE_DOWNLOAD_RETRIES + 1):
+                        attempts_made += 1
+                        success, error_message = download_binary(url, target_path)
+                        if success:
+                            fallback_used = is_fallback_attempt
+                            last_error = None
+                            break
+
+                        last_error = error_message or self._t("error_unknown")
+                        last_lang_label = attempt_lang_label
+                        self.queue.put(
+                            (
+                                "log",
+                                self._t(
+                                    "log_download_retry",
+                                    attempt=attempt,
+                                    total=IMAGE_DOWNLOAD_RETRIES,
+                                    lang=attempt_lang_label,
+                                    set_name=set_name,
+                                    card_name=card_display_name,
+                                    error=last_error,
+                                ),
+                            )
+                        )
+                        if attempt < IMAGE_DOWNLOAD_RETRIES:
+                            time.sleep(IMAGE_RETRY_DELAY)
+
+                    if success:
+                        break
                 if success:
                     if fallback_used:
                         self.queue.put(
@@ -1163,9 +1193,11 @@ class MagicDownloaderApp:
                             "log",
                             self._t(
                                 "log_download_failure",
-                                lang=lang_label,
+                                lang=last_lang_label,
                                 set_name=set_name,
                                 card_name=card_display_name,
+                                attempts=max(attempts_made, 1),
+                                error=last_error or self._t("error_unknown"),
                             ),
                         )
                     )
