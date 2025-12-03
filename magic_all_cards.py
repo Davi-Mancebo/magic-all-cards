@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 from queue import Empty, Queue
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
 
@@ -25,6 +26,15 @@ REQUEST_TIMEOUT = 25
 REQUEST_DELAY = 0.05
 CARD_WARNING_THRESHOLD = 40000  # Aproximadamente >10 GB de imagens
 CARD_WARNING_MB_PER_IMAGE = 0.24  # média estimada em MB por PNG
+IMAGE_DOWNLOAD_RETRIES = 3
+IMAGE_RETRY_DELAY = 1.0
+@dataclass(frozen=True)
+class SetMetadata:
+    code: str
+    name: str
+    release: str
+    search: str
+
 CARD_TYPE_RULES: Dict[str, Callable[[Dict], bool]] = {
     "all": lambda card: True,
     "creature": lambda card: "Creature" in card.get("types", []),
@@ -479,8 +489,8 @@ class MagicDownloaderApp:
 
         self.queue: Queue = Queue()
         self.sets_data: Dict[str, Dict] = {}
-        self.sets_metadata: List[Dict[str, str]] = []
-        self.filtered_metadata: List[Dict[str, str]] = []
+        self.sets_metadata: List[SetMetadata] = []
+        self.filtered_metadata: List[SetMetadata] = []
         self.database_lock = threading.Lock()
         self.sets_lock = threading.Lock()
 
@@ -877,18 +887,18 @@ class MagicDownloaderApp:
             with ALL_PRINTINGS_FILE.open(encoding="utf-8") as handler:
                 data = json.load(handler)["data"]
 
-            metadata = []
+            metadata: List[SetMetadata] = []
             for code, info in data.items():
                 metadata.append(
-                    {
-                        "code": code,
-                        "name": info.get("name", code),
-                        "release": info.get("releaseDate", ""),
-                        "search": f"{code} {info.get('name', '')}".lower(),
-                    }
+                    SetMetadata(
+                        code=code,
+                        name=info.get("name", code),
+                        release=info.get("releaseDate", ""),
+                        search=f"{code} {info.get('name', '')}".lower(),
+                    )
                 )
 
-            metadata.sort(key=lambda item: item.get("release", ""), reverse=True)
+            metadata.sort(key=lambda item: item.release or "", reverse=True)
 
             self.queue.put(("sets_loaded", (data, metadata)))
             self.queue.put(("log", self._t("sets_loaded", count=len(metadata))))
@@ -916,7 +926,7 @@ class MagicDownloaderApp:
             daemon=True,
         ).start()
 
-    def _on_sets_loaded(self, data: Dict, metadata: List[Dict[str, str]]) -> None:
+    def _on_sets_loaded(self, data: Dict, metadata: List[SetMetadata]) -> None:
         self.sets_data = data
         self.sets_metadata = metadata
         self.filtered_metadata = metadata
@@ -927,13 +937,13 @@ class MagicDownloaderApp:
     def _refresh_set_list(self) -> None:
         filter_text = self.set_filter_var.get().lower().strip()
         if filter_text:
-            self.filtered_metadata = [item for item in self.sets_metadata if filter_text in item["search"]]
+            self.filtered_metadata = [item for item in self.sets_metadata if filter_text in item.search]
         else:
             self.filtered_metadata = list(self.sets_metadata)
 
         self.set_list.delete(0, tk.END)
         for item in self.filtered_metadata:
-            display = f"[{item['code']}] {item['name']} ({item['release']})"
+            display = f"[{item.code}] {item.name} ({item.release})"
             self.set_list.insert(tk.END, display)
 
     def clear_set_selection(self) -> None:
@@ -965,7 +975,7 @@ class MagicDownloaderApp:
             messagebox.showwarning(self._t("warning_title"), self._t("missing_selection"))
             return
 
-        selected_codes = [self.filtered_metadata[idx]["code"] for idx in selection]
+        selected_codes = [self.filtered_metadata[idx].code for idx in selection]
         destination = Path(self.destination_var.get()).expanduser()
 
         type_key = self.selected_type_key
@@ -1090,9 +1100,10 @@ class MagicDownloaderApp:
                 color_folder = ensure_output_dir(language_folder / get_color_folder_name(card))
                 type_folder = ensure_output_dir(color_folder / get_type_folder_name(card))
                 rarity_folder = ensure_output_dir(type_folder / get_rarity_folder_name(card.get("rarity")))
-                file_path = rarity_folder / f"{filename}.png"
+                primary_path = rarity_folder / f"{filename}.png"
+                fallback_path = rarity_folder / f"{filename}_EN.png"
 
-                if file_path.exists():
+                if primary_path.exists() or fallback_path.exists():
                     downloaded += 1
                     percent = (downloaded / total_cards) * 100
                     label = self._t(
@@ -1107,11 +1118,17 @@ class MagicDownloaderApp:
                 url_candidates = build_image_url_candidates(card, code, language_code)
                 success = False
                 fallback_used = False
-
                 for idx, url in enumerate(url_candidates):
-                    success = download_binary(url, file_path)
+                    is_fallback_attempt = idx > 0 and language_code.lower() != "en"
+                    target_path = fallback_path if is_fallback_attempt else primary_path
+                    for attempt in range(IMAGE_DOWNLOAD_RETRIES):
+                        success = download_binary(url, target_path)
+                        if success:
+                            fallback_used = is_fallback_attempt
+                            break
+                        if attempt < IMAGE_DOWNLOAD_RETRIES - 1:
+                            time.sleep(IMAGE_RETRY_DELAY)
                     if success:
-                        fallback_used = idx > 0 and language_code != "en"
                         break
 
                 lang_label = language_code.upper()
