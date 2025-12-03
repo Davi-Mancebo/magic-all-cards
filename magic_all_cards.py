@@ -175,6 +175,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "app_language": "Idioma do app:",
         "sets": "Sets disponíveis",
         "download_cards": "Baixar cartas selecionadas",
+        "stop_download": "Parar download",
         "log": "Log",
         "status_ready": "Pronto",
         "status_downloading_db": "Baixando base MTGJSON...",
@@ -209,6 +210,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "error_load_sets": "Erro ao carregar sets: {error}",
         "log_db_corrupted": "AllPrintings.json parece corrompido. Baixando novamente...",
         "select_language": "Selecione o idioma do aplicativo.",
+        "clear_selection": "Limpar seleção",
+        "log_download_stopped": "Download interrompido pelo usuário.",
     },
     "en": {
         "title": "Magic All Cards - GUI",
@@ -224,6 +227,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "app_language": "App language:",
         "sets": "Available sets",
         "download_cards": "Download selected cards",
+        "stop_download": "Stop download",
         "log": "Log",
         "status_ready": "Ready",
         "status_downloading_db": "Downloading MTGJSON database...",
@@ -258,6 +262,8 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "error_load_sets": "Failed to load sets: {error}",
         "log_db_corrupted": "AllPrintings.json looks corrupted. Downloading it again...",
         "select_language": "Select the application language.",
+        "clear_selection": "Clear selection",
+        "log_download_stopped": "Download stopped by the user.",
     },
 }
 
@@ -491,6 +497,7 @@ class MagicDownloaderApp:
         self.app_language_label: Optional[ttk.Label] = None
         self.filters_frame: Optional[ttk.LabelFrame] = None
         self.sets_frame: Optional[ttk.LabelFrame] = None
+        self.btn_clear_sets: Optional[ttk.Button] = None
         self.log_frame: Optional[ttk.LabelFrame] = None
         self.card_type_label: Optional[ttk.Label] = None
         self.rarity_label: Optional[ttk.Label] = None
@@ -507,6 +514,9 @@ class MagicDownloaderApp:
         self.status_var = tk.StringVar(value=self._t("status_ready"))
         self.progress_var = tk.DoubleVar(value=0.0)
         self.progress_label_var = tk.StringVar(value="0%")
+        self.btn_stop_download: Optional[ttk.Button] = None
+        self.download_cancel_event = threading.Event()
+        self.is_downloading = False
 
         self._build_ui()
         self.root.after(150, self._process_queue)
@@ -604,6 +614,15 @@ class MagicDownloaderApp:
         self.sets_frame = ttk.LabelFrame(self.root, text=self._t("sets"), padding=10)
         self.sets_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
+        sets_header = ttk.Frame(self.sets_frame)
+        sets_header.pack(fill=tk.X, side=tk.TOP, anchor=tk.W, pady=(0, 6))
+        self.btn_clear_sets = ttk.Button(
+            sets_header,
+            text=self._t("clear_selection"),
+            command=self.clear_set_selection,
+        )
+        self.btn_clear_sets.pack(side=tk.RIGHT)
+
         self.set_list = tk.Listbox(self.sets_frame, selectmode=tk.MULTIPLE, exportselection=False)
         self.set_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -621,6 +640,14 @@ class MagicDownloaderApp:
             state=tk.DISABLED,
         )
         self.btn_start_download.pack(side=tk.LEFT)
+
+        self.btn_stop_download = ttk.Button(
+            action_frame,
+            text=self._t("stop_download"),
+            command=self.stop_download,
+            state=tk.DISABLED,
+        )
+        self.btn_stop_download.pack(side=tk.LEFT, padx=(6, 0))
 
         ttk.Progressbar(
             action_frame,
@@ -692,10 +719,14 @@ class MagicDownloaderApp:
             self.app_language_label.config(text=self._t("app_language"))
         if self.sets_frame:
             self.sets_frame.config(text=self._t("sets"))
+        if self.btn_clear_sets:
+            self.btn_clear_sets.config(text=self._t("clear_selection"))
         if self.log_frame:
             self.log_frame.config(text=self._t("log"))
         if self.btn_start_download:
             self.btn_start_download.config(text=self._t("download_cards"))
+        if self.btn_stop_download:
+            self.btn_stop_download.config(text=self._t("stop_download"))
         if self.app_language_button:
             self.app_language_button.config(text=self._get_next_app_language_label())
         self.root.title(self._t("title"))
@@ -905,6 +936,25 @@ class MagicDownloaderApp:
             display = f"[{item['code']}] {item['name']} ({item['release']})"
             self.set_list.insert(tk.END, display)
 
+    def clear_set_selection(self) -> None:
+        if self.set_list is not None:
+            self.set_list.selection_clear(0, tk.END)
+
+    def stop_download(self) -> None:
+        if not self.is_downloading:
+            return
+        self.download_cancel_event.set()
+        if self.btn_stop_download:
+            self.btn_stop_download.config(state=tk.DISABLED)
+
+    def _on_download_complete(self, canceled: bool) -> None:
+        self.is_downloading = False
+        if self.btn_stop_download:
+            self.btn_stop_download.config(state=tk.DISABLED)
+        if self.btn_start_download:
+            state = tk.NORMAL if self.sets_data else tk.DISABLED
+            self.btn_start_download.config(state=state)
+
     def start_download(self) -> None:
         if not self.sets_data:
             messagebox.showinfo(self._t("info_title"), self._t("missing_sets"))
@@ -923,6 +973,13 @@ class MagicDownloaderApp:
         name_filter = self.name_filter_var.get().strip().lower()
         language_display = self.language_var.get()
         language_code = LANGUAGE_DISPLAY_TO_CODE.get(language_display, "en")
+
+        self.is_downloading = True
+        self.download_cancel_event.clear()
+        if self.btn_start_download:
+            self.btn_start_download.config(state=tk.DISABLED)
+        if self.btn_stop_download:
+            self.btn_stop_download.config(state=tk.NORMAL)
 
         thread = threading.Thread(
             target=self._download_sets_task,
@@ -978,6 +1035,7 @@ class MagicDownloaderApp:
 
         filtered_cards = prepared_cards
         total_cards = prepared_total
+        cancel_event = self.download_cancel_event
 
         if filtered_cards is None or total_cards is None:
             filtered_cards, total_cards = self._filter_cards(set_codes, type_key, rarity_key, name_filter)
@@ -986,6 +1044,7 @@ class MagicDownloaderApp:
             self.queue.put(("error", self._t("error_no_cards")))
             self.queue.put(("status", self._t("status_ready")))
             self.queue.put(("progress", 0.0))
+            self.queue.put(("download_complete", {"canceled": True}))
             return
 
         if total_cards >= CARD_WARNING_THRESHOLD:
@@ -1004,19 +1063,27 @@ class MagicDownloaderApp:
                 self.queue.put(("log", self._t("log_download_cancelled")))
                 self.queue.put(("status", self._t("status_ready")))
                 self.queue.put(("progress", 0.0))
+                self.queue.put(("download_complete", {"canceled": True}))
                 return
 
         self.queue.put(("status", self._t("status_downloading_cards", total=total_cards)))
         self.queue.put(("log", self._t("download_log_start", cards=total_cards)))
 
         downloaded = 0
+        canceled = False
         for code, cards in filtered_cards.items():
+            if cancel_event.is_set():
+                canceled = True
+                break
             set_name = self.sets_data.get(code, {}).get("name", code)
             folder_name = sanitize_filename(f"{code}_{set_name}") or code
             set_folder = ensure_output_dir(destination / folder_name)
             language_folder = ensure_output_dir(set_folder / get_language_folder_name(language_code))
 
             for card in cards:
+                if cancel_event.is_set():
+                    canceled = True
+                    break
                 card_name = sanitize_filename(card.get("name", "carta"))
                 card_number = card.get("number")
                 filename = f"{card_number}_{card_name}" if card_number else card_name
@@ -1097,9 +1164,16 @@ class MagicDownloaderApp:
                 self.queue.put(("progress", {"value": percent, "label": label}))
                 time.sleep(REQUEST_DELAY)
 
+            if canceled:
+                break
+
+        if canceled:
+            self.queue.put(("log", self._t("log_download_stopped")))
+        else:
             self.queue.put(("log", self._t("download_log_done")))
-            self.queue.put(("status", self._t("status_ready")))
+        self.queue.put(("status", self._t("status_ready")))
         self.queue.put(("progress", 0.0))
+        self.queue.put(("download_complete", {"canceled": canceled}))
 
     def _process_queue(self) -> None:
         try:
@@ -1137,6 +1211,13 @@ class MagicDownloaderApp:
                     finally:
                         decision_holder["proceed"] = bool(proceed)
                         event.set()
+                elif message == "download_complete":
+                    canceled = False
+                    if isinstance(payload, dict):
+                        canceled = bool(payload.get("canceled"))
+                    else:
+                        canceled = bool(payload)
+                    self._on_download_complete(canceled)
         except Empty:
             pass
         finally:
