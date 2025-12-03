@@ -1,5 +1,7 @@
 # Magic All Cards (GUI)
 
+![Magic All Cards GUI](gui.png)
+
 Magic All Cards is a Tkinter desktop app that keeps the MTGJSON `AllPrintings.json` database up to date, lets you filter entire Magic: The Gathering sets, and downloads the corresponding Scryfall card images into a clean folder hierarchy.
 
 > 🇧🇷 Precisa das instruções em português? Confira o arquivo [`README.pt-BR.md`](README.pt-BR.md).

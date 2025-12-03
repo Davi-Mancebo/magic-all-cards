@@ -1,5 +1,7 @@
 # Magic All Cards (GUI)
 
+![Magic All Cards GUI](../gui.png)
+
 Aplicativo gráfico para baixar imagens de cartas de Magic: The Gathering direto do Scryfall utilizando o banco `AllPrintings.json` do MTGJSON.
 
 > Prefer you read in English? See the [README.md](README.md).
