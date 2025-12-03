@@ -13,7 +13,7 @@ Aplicativo gráfico para baixar imagens de cartas de Magic: The Gathering direto
 - **Filtros avançados:** seleção múltipla de sets, filtros por tipo/raridade/nome e apenas cartas com Scryfall ID são enfileiradas.
 - **Progresso e alertas:** barra + contador textual. Se o lote ultrapassar ~40 000 cartas (~10 GB) é necessário confirmar antes de continuar.
 - **Estrutura organizada:** arquivos armazenados como `SET/Idioma/Cor/Tipo/Raridade/numero_nome.png`, priorizando terrenos, cores e raridades conforme solicitado.
-- **Pronto para distribuição:** funciona com PyInstaller (`--onefile --windowed`), facilitando gerar `.exe` para quem não tem Python instalado.
+- **Pronto para distribuição:** funciona diretamente via Python. Bastar rodar `python magic_all_cards.py`. Pacotes `.exe` com PyInstaller/cx_Freeze não são mais fornecidos neste repositório.
 
 ## Requisitos
 - Python 3.10 ou superior.
@@ -59,6 +59,7 @@ python -m PyInstaller --onefile --windowed --name MagicAllCards magic_all_cards.
 3. Aponte para os arquivos em `dist/` (incluindo `MagicAllCards.exe` e, se quiser, `AllPrintings*.json`) e gere o instalador.
 
 > Dica: mantenha `AllPrintings.json` na mesma pasta do executável para que o carregamento dos sets seja imediato.
+
 
 ## Dependências
 - `requests` para downloads HTTP.

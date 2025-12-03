@@ -48,11 +48,12 @@ Each selected set produces:
 - **Type** – `Land`, `Creature`, `Planeswalker`, `Instant`, `Sorcery`, `Enchantment`, `Artifact`, `Battle`, or `Others` (lands are always prioritized as requested).
 - **Rarity** – `Common`, `Uncommon`, `Rare`, `Mythic`, `Special`, `Promo`, `Bonus`, or `NoRarity`.
 
-> **Note:** the project now ships as source-only. Run it with Python (instructions above); PyInstaller packaging is no longer supported in this repository.
+> **Note:** the project ships as source-first. Run it directly with Python as described above. Binary builders such as PyInstaller/cx_Freeze are no longer maintained in this repository.
 
 ## Dependencies
 - `requests` for HTTP transfers
 - `tkinter` (bundled with the standard Windows Python installer)
+
 
 ## License
 This project is distributed under the [Creative Commons Attribution-NonCommercial 4.0 International](LICENSE)
