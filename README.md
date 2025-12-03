@@ -68,6 +68,11 @@ python -m PyInstaller --onefile --windowed --name MagicAllCards magic_all_cards.
 - `requests` for HTTP transfers
 - `tkinter` (bundled with the standard Windows Python installer)
 
+## License
+This project is distributed under the [Creative Commons Attribution-NonCommercial 4.0 International](LICENSE)
+license. You may adapt and share the code for non-commercial purposes as long as you credit the author and
+keep the same non-commercial terms in derivative works.
+
 ## Notes
 - `AllPrintings.json` is roughly 1 GB; the first download may take a while depending on your connection.
 - Respect Scryfall’s API terms—avoid running multiple instances concurrently or hammering the service.
