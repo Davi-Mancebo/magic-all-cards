@@ -119,11 +119,13 @@ class MagicDownloaderApp:
 
         self.set_filter_var = tk.StringVar()
 
-        self.language_options = list(const.LANGUAGE_DISPLAY_TO_CODE.keys())
+        self.language_display_to_code: Dict[str, str] = {}
 
-        default_language_display = self.language_options[0]
+        self.language_options: List[str] = []
 
-        self.language_var = tk.StringVar(value=default_language_display)
+        self.language_var = tk.StringVar()
+
+        self._refresh_language_choices(preserve_selected_code=False)
 
         self.status_var = tk.StringVar(value=self._t("status_ready"))
 
@@ -313,7 +315,7 @@ class MagicDownloaderApp:
 
             self.filters_frame,
 
-            text=self._get_next_app_language_label(),
+            text=self._get_app_language_label(),
 
             command=self._toggle_app_language,
 
@@ -448,26 +450,18 @@ class MagicDownloaderApp:
         return const.RARITY_LABELS.get(key, {}).get(self.app_language, key)
 
 
-
     def _get_next_app_language_code(self) -> str:
-
         codes = list(const.APP_LANGUAGES.keys())
-
         if self.app_language in codes:
-
             index = codes.index(self.app_language)
-
             return codes[(index + 1) % len(codes)]
-
         return const.DEFAULT_APP_LANGUAGE
 
 
 
-    def _get_next_app_language_label(self) -> str:
-
-        next_code = self._get_next_app_language_code()
-
-        return const.APP_LANGUAGES.get(next_code, next_code.upper())
+    def _get_app_language_label(self, code: Optional[str] = None) -> str:
+        target_code = code or self.app_language
+        return const.APP_LANGUAGES.get(target_code, target_code.upper())
 
 
 
@@ -496,6 +490,7 @@ class MagicDownloaderApp:
     def _apply_language_to_ui(self) -> None:
 
         self._refresh_filter_comboboxes()
+        self._refresh_language_choices()
 
         if self.btn_download_db:
 
@@ -559,7 +554,7 @@ class MagicDownloaderApp:
 
         if self.app_language_button:
 
-            self.app_language_button.config(text=self._get_next_app_language_label())
+            self.app_language_button.config(text=self._get_app_language_label())
 
         self.root.title(self._t("title"))
 
@@ -642,6 +637,41 @@ class MagicDownloaderApp:
             self.rarity_box["values"] = rarity_values
 
         self.rarity_var.set(self._get_rarity_label(self.selected_rarity_key))
+
+
+    def _refresh_language_choices(self, preserve_selected_code: bool = True) -> None:
+
+        previous_code = None
+
+        if preserve_selected_code and self.language_display_to_code:
+
+            previous_code = self.language_display_to_code.get(self.language_var.get())
+
+        display_map = const.get_language_display_map(self.app_language)
+
+        if not display_map:
+
+            display_map = {"English (EN)": "en"}
+
+        self.language_display_to_code = display_map
+
+        self.language_options = list(display_map.keys())
+
+        if self.language_box is not None:
+
+            self.language_box["values"] = self.language_options
+
+        target_code = previous_code or "en"
+
+        selection = next((label for label, code in display_map.items() if code == target_code), None)
+
+        if selection is None and self.language_options:
+
+            selection = self.language_options[0]
+
+        if selection:
+
+            self.language_var.set(selection)
 
 
 
@@ -804,6 +834,7 @@ class MagicDownloaderApp:
         reset_local_database()
 
         self.queue.put(("log", self._t("log_db_corrupted")))
+        self.queue.put(("log", self._t("log_db_redownload")))
 
         threading.Thread(
 
@@ -921,7 +952,7 @@ class MagicDownloaderApp:
 
         language_display = self.language_var.get()
 
-        language_code = const.LANGUAGE_DISPLAY_TO_CODE.get(language_display, "en")
+        language_code = self.language_display_to_code.get(language_display, "en")
 
 
 
@@ -1119,6 +1150,8 @@ class MagicDownloaderApp:
 
         canceled = False
 
+        language_primary_failures: Dict[str, int] = {}
+
         for code, cards in filtered_cards.items():
 
             if cancel_event.is_set():
@@ -1133,7 +1166,9 @@ class MagicDownloaderApp:
 
             set_folder = ensure_output_dir(destination / folder_name)
 
-            language_folder = ensure_output_dir(set_folder / get_language_folder_name(language_code))
+            language_folder = ensure_output_dir(
+                set_folder / get_language_folder_name(language_code, self.app_language)
+            )
 
 
 
@@ -1151,11 +1186,15 @@ class MagicDownloaderApp:
 
                 filename = f"{card_number}_{card_name}" if card_number else card_name
 
-                color_folder = ensure_output_dir(language_folder / get_color_folder_name(card))
-
-                type_folder = ensure_output_dir(color_folder / get_type_folder_name(card))
-
-                rarity_folder = ensure_output_dir(type_folder / get_rarity_folder_name(card.get("rarity")))
+                color_folder = ensure_output_dir(
+                    language_folder / get_color_folder_name(card, self.app_language)
+                )
+                type_folder = ensure_output_dir(
+                    color_folder / get_type_folder_name(card, self.app_language)
+                )
+                rarity_folder = ensure_output_dir(
+                    type_folder / get_rarity_folder_name(card.get("rarity"), self.app_language)
+                )
 
                 primary_path = rarity_folder / f"{filename}.png"
 
@@ -1190,6 +1229,11 @@ class MagicDownloaderApp:
                 url_candidates = build_image_url_candidates(card, code, language_code)
 
                 lang_label = language_code.upper()
+                selected_language = language_code.lower()
+                skip_primary_language = (
+                    selected_language != "en"
+                    and language_primary_failures.get(code, 0) >= const.LANGUAGE_AUTO_FALLBACK_THRESHOLD
+                )
 
                 card_display_name = card.get("name") or self._t("card_fallback_name")
 
@@ -1207,7 +1251,11 @@ class MagicDownloaderApp:
 
                 for idx, url in enumerate(url_candidates):
 
-                    is_fallback_attempt = idx > 0 and language_code.lower() != "en"
+                    is_fallback_attempt = idx > 0 and selected_language != "en"
+                    is_primary_language_attempt = selected_language != "en" and not is_fallback_attempt
+
+                    if is_primary_language_attempt and skip_primary_language:
+                        continue
 
                     attempt_lang_label = "EN" if is_fallback_attempt else lang_label
 
@@ -1235,37 +1283,75 @@ class MagicDownloaderApp:
 
                         last_lang_label = attempt_lang_label
 
-                        self.queue.put(
+                        is_not_found = bool(error_message and "status 404" in error_message.lower())
 
-                            (
+                        log_retry = True
 
-                                "log",
+                        if is_not_found and is_primary_language_attempt:
 
-                                self._t(
+                            failure_count = language_primary_failures.get(code, 0) + 1
 
-                                    "log_download_retry",
+                            language_primary_failures[code] = failure_count
 
-                                    attempt=attempt,
+                            if failure_count == const.LANGUAGE_AUTO_FALLBACK_THRESHOLD:
 
-                                    total=const.IMAGE_DOWNLOAD_RETRIES,
+                                self.queue.put(
 
-                                    lang=attempt_lang_label,
+                                    (
 
-                                    set_name=set_name,
+                                        "log",
 
-                                    card_name=card_display_name,
+                                        self._t(
 
-                                    error=last_error,
+                                            "log_language_unavailable",
 
-                                ),
+                                            lang=lang_label,
+
+                                            set_name=set_name,
+
+                                        ),
+
+                                    )
+
+                                )
+
+                            log_retry = False
+
+                        if log_retry:
+
+                            self.queue.put(
+
+                                (
+
+                                    "log",
+
+                                    self._t(
+
+                                        "log_download_retry",
+
+                                        attempt=attempt,
+
+                                        total=const.IMAGE_DOWNLOAD_RETRIES,
+
+                                        lang=attempt_lang_label,
+
+                                        set_name=set_name,
+
+                                        card_name=card_display_name,
+
+                                        error=last_error,
+
+                                    ),
+
+                                )
 
                             )
 
-                        )
+                        if is_not_found or attempt == const.IMAGE_DOWNLOAD_RETRIES:
 
-                        if attempt < const.IMAGE_DOWNLOAD_RETRIES:
+                            break
 
-                            time.sleep(const.IMAGE_RETRY_DELAY)
+                        time.sleep(const.IMAGE_RETRY_DELAY)
 
 
 

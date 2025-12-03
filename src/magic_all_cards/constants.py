@@ -30,6 +30,7 @@ CARD_WARNING_THRESHOLD = 40000
 CARD_WARNING_MB_PER_IMAGE = 0.24
 IMAGE_DOWNLOAD_RETRIES = 3
 IMAGE_RETRY_DELAY = 1.0
+LANGUAGE_AUTO_FALLBACK_THRESHOLD = 3
 
 SCRYFALL_LANGUAGE_CHOICES: List[tuple[str, str]] = [
     ("English", "en"),
@@ -52,14 +53,44 @@ SCRYFALL_LANGUAGE_CHOICES: List[tuple[str, str]] = [
     ("Quenya", "qya"),
 ]
 
-LANGUAGE_DISPLAY_TO_CODE: Dict[str, str] = {
-    f"{name} ({code.upper()})": code for name, code in SCRYFALL_LANGUAGE_CHOICES
+LANGUAGE_FOLDER_INDEX: Dict[str, int] = {
+    code: index + 1 for index, (_name, code) in enumerate(SCRYFALL_LANGUAGE_CHOICES)
 }
 
-LANGUAGE_FOLDER_LABELS: Dict[str, str] = {
-    code: f"{index + 1:02d}-{name.replace(' ', '')}"
-    for index, (name, code) in enumerate(SCRYFALL_LANGUAGE_CHOICES)
+LANGUAGE_NAMES_BY_APP_LANG: Dict[str, Dict[str, str]] = {
+    "en": {code: name for name, code in SCRYFALL_LANGUAGE_CHOICES},
+    "pt": {
+        "en": "Inglês",
+        "es": "Espanhol",
+        "fr": "Francês",
+        "de": "Alemão",
+        "it": "Italiano",
+        "pt": "Português",
+        "ja": "Japonês",
+        "ko": "Coreano",
+        "ru": "Russo",
+        "zhs": "Chinês Simplificado",
+        "zht": "Chinês Tradicional",
+        "he": "Hebraico",
+        "la": "Latim",
+        "grc": "Grego Antigo",
+        "ar": "Árabe",
+        "sa": "Sânscrito",
+        "ph": "Phyrexiano",
+        "qya": "Quenya",
+    },
 }
+
+def get_language_display_map(app_language: str) -> Dict[str, str]:
+    """Return localized language choices keyed by label."""
+
+    fallback = LANGUAGE_NAMES_BY_APP_LANG.get(DEFAULT_APP_LANGUAGE, {})
+    localized = LANGUAGE_NAMES_BY_APP_LANG.get(app_language, fallback)
+    mapping: Dict[str, str] = {}
+    for code in LANGUAGE_FOLDER_INDEX:
+        label = localized.get(code) or fallback.get(code) or code.upper()
+        mapping[f"{label} ({code.upper()})"] = code
+    return mapping
 
 CARD_TYPE_RULES: Dict[str, Callable[[Dict[str, Any]], bool]] = {
     "all": lambda card: True,
@@ -129,34 +160,65 @@ RARITY_ORDER: List[str] = [
     "bonus",
 ]
 
-RARITY_FOLDER_LABELS: Dict[str, str] = {
-    "common": "1-Comum",
-    "uncommon": "2-Incomum",
-    "rare": "3-Rara",
-    "mythic": "4-Mítica",
-    "special": "5-Especial",
-    "bonus": "6-Bônus",
+RARITY_FOLDER_LABELS: Dict[str, Dict[str, str]] = {
+    "pt": {
+        "common": "1-Comum",
+        "uncommon": "2-Incomum",
+        "rare": "3-Rara",
+        "mythic": "4-Mítica",
+        "special": "5-Especial",
+        "bonus": "6-Bônus",
+        "__default__": "0-SemRaridade",
+    },
+    "en": {
+        "common": "1-Common",
+        "uncommon": "2-Uncommon",
+        "rare": "3-Rare",
+        "mythic": "4-Mythic",
+        "special": "5-Special",
+        "bonus": "6-Bonus",
+        "__default__": "0-NoRarity",
+    },
 }
 
-COLOR_FOLDER_LABELS: Dict[str, str] = {
-    "W": "1-Branca",
-    "U": "2-Azul",
-    "B": "3-Preta",
-    "R": "4-Vermelha",
-    "G": "5-Verde",
-    "C": "0-Incolor",
+COLOR_FOLDER_LABELS: Dict[str, Dict[str, str]] = {
+    "pt": {
+        "W": "1-Branca",
+        "U": "2-Azul",
+        "B": "3-Preta",
+        "R": "4-Vermelha",
+        "G": "5-Verde",
+        "C": "0-Incolor",
+        "__colorless__": "0-Incolor",
+        "__multicolor__": "7-Multicolor",
+    },
+    "en": {
+        "W": "1-White",
+        "U": "2-Blue",
+        "B": "3-Black",
+        "R": "4-Red",
+        "G": "5-Green",
+        "C": "0-Colorless",
+        "__colorless__": "0-Colorless",
+        "__multicolor__": "7-Multicolor",
+    },
 }
 
-TYPE_PRIORITY: List[tuple[str, str]] = [
-    ("Land", "0-Terreno"),
-    ("Creature", "1-Criatura"),
-    ("Planeswalker", "2-Planeswalker"),
-    ("Instant", "3-Instant"),
-    ("Sorcery", "4-Feitiço"),
-    ("Enchantment", "5-Encantamento"),
-    ("Artifact", "6-Artefato"),
-    ("Battle", "7-Batalha"),
+TYPE_PRIORITY: List[tuple[str, Dict[str, str]]] = [
+    ("Land", {"pt": "0-Terreno", "en": "0-Land"}),
+    ("Creature", {"pt": "1-Criatura", "en": "1-Creature"}),
+    ("Planeswalker", {"pt": "2-Planeswalker", "en": "2-Planeswalker"}),
+    ("Instant", {"pt": "3-Instante", "en": "3-Instant"}),
+    ("Sorcery", {"pt": "4-Feitiço", "en": "4-Sorcery"}),
+    ("Enchantment", {"pt": "5-Encantamento", "en": "5-Enchantment"}),
+    ("Artifact", {"pt": "6-Artefato", "en": "6-Artifact"}),
+    ("Battle", {"pt": "7-Batalha", "en": "7-Battle"}),
 ]
+
+TYPE_DEFAULT_FOLDER: Dict[str, str] = {
+    "pt": "8-Outros",
+    "en": "8-Others",
+}
 
 APP_LANGUAGES = {
     "pt": "Português",
@@ -200,6 +262,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_download_fallback": "Baixado (fallback EN): {set_name} - {card_name}",
         "log_download_retry": "Tentativa {attempt}/{total} falhou [{lang}]: {set_name} - {card_name}. Motivo: {error}",
         "log_download_failure": "Falhou [{lang}] após {attempts} tentativas: {set_name} - {card_name}. Motivo: {error}",
+        "log_language_unavailable": "Idioma {lang} indisponível para {set_name}. Usando fallback EN para o restante do set.",
         "progress_cards_label": "{percent}% ({downloaded}/{total} cartas)",
         "card_fallback_name": "Carta",
         "error_title": "Erro",
@@ -216,6 +279,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_sets_in_progress": "Carregamento de sets já está em andamento.",
         "error_load_sets": "Erro ao carregar sets: {error}",
         "log_db_corrupted": "AllPrintings.json parece corrompido. Baixando novamente...",
+        "log_db_redownload": "Clique em 'Download/Update MTGJSON' caso o download não reinicie sozinho.",
         "select_language": "Selecione o idioma do aplicativo.",
         "clear_selection": "Limpar seleção",
         "log_download_stopped": "Download interrompido pelo usuário.",
@@ -254,6 +318,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_download_fallback": "Downloaded (fallback EN): {set_name} - {card_name}",
         "log_download_retry": "Attempt {attempt}/{total} failed [{lang}]: {set_name} - {card_name}. Reason: {error}",
         "log_download_failure": "Failed [{lang}] after {attempts} attempts: {set_name} - {card_name}. Reason: {error}",
+        "log_language_unavailable": "Language {lang} unavailable for {set_name}. Using EN fallback for the rest of this set.",
         "progress_cards_label": "{percent}% ({downloaded}/{total} cards)",
         "card_fallback_name": "Card",
         "error_title": "Error",
@@ -270,6 +335,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "log_sets_in_progress": "Set loading is already running.",
         "error_load_sets": "Failed to load sets: {error}",
         "log_db_corrupted": "AllPrintings.json looks corrupted. Downloading it again...",
+        "log_db_redownload": "Click 'Download/Update MTGJSON' if the download does not restart automatically.",
         "select_language": "Select the application language.",
         "clear_selection": "Clear selection",
         "log_download_stopped": "Download stopped by the user.",

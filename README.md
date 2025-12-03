@@ -48,23 +48,7 @@ Each selected set produces:
 - **Type** – `Land`, `Creature`, `Planeswalker`, `Instant`, `Sorcery`, `Enchantment`, `Artifact`, `Battle`, or `Others` (lands are always prioritized as requested).
 - **Rarity** – `Common`, `Uncommon`, `Rare`, `Mythic`, `Special`, `Promo`, `Bonus`, or `NoRarity`.
 
-### Building a Windows Executable
-
-#### Quick PyInstaller build
-```powershell
-pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name MagicAllCards magic_all_cards.py
-```
-
-- The resulting `MagicAllCards.exe` lives in `dist/`.
-- Optional: ship `AllPrintings.json` and `AllPrintings.meta.json` alongside the executable so users skip the first download.
-
-#### Shipping an installer
-1. Generate the `.exe` with PyInstaller (previous step).
-2. Use a tool such as [Inno Setup](https://jrsoftware.org/isinfo.php) or [NSIS](https://nsis.sourceforge.io/).
-3. Point the installer project to the `dist/` folder (include `MagicAllCards.exe`, `AllPrintings.json`, etc.) and build your installer.
-
-> Tip: keep `AllPrintings.json` in the same directory as the executable for instant set loading.
+> **Note:** the project now ships as source-only. Run it with Python (instructions above); PyInstaller packaging is no longer supported in this repository.
 
 ## Dependencies
 - `requests` for HTTP transfers
